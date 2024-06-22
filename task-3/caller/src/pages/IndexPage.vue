@@ -11,6 +11,14 @@
       :label="'Принимающая сторона (Callee)'"
       :options="options"
     />
+    <div class="conditions">
+      <Checkbox v-model="filterConditions" :label="'Все'" />
+      <Checkbox v-model="filterConditions" :label="'Прямое соединение'" />
+      <Checkbox v-model="filterConditions" :label="'Один дополнительный узел'" />
+      <Checkbox v-model="filterConditions" :label="'Два дополнительных узла'" />
+    </div>
+
+    {{ filterConditions }}
   </div>
 </template>
 
@@ -18,10 +26,12 @@
 import { onMounted, ref } from 'vue';
 import axios from 'axios';
 import BaseSelector from '../shared/ui/dropdown';
+import Checkbox from '../shared/ui/checkbox';
 
 const options = ref<string[]>([]);
-const srcCountry = ref('hahahaha');
+const srcCountry = ref('');
 const destCountry = ref('');
+const filterConditions = ref([]);
 
 onMounted(async () => {
   const data = await axios.get('src/shared/api/call-paths.json');
