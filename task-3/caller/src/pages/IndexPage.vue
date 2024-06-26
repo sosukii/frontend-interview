@@ -1,95 +1,194 @@
 <template>
   <div class="wrap">
     <section class="section">
-      <BaseSelector
-        v-model="srcCountry"
+      <Dropdown
+        v-model="caller"
         :label="'Звонящая сторона (Caller)'"
-        :options="options"
+        :options="countryList"
       />
-
-      <BaseSelector
-        v-model="destCountry"
+      <Dropdown
+        v-model="callee"
         :label="'Принимающая сторона (Callee)'"
-        :options="options"
+        :options="countryList"
       />
 
       <div class="conditions">
-        <Checkbox v-model="filterConditions" :label="'Все'" />
-        <Checkbox v-model="filterConditions" :label="'Прямое соединение'" />
+        <Checkbox v-model="isAllVariants" :label="'Все'" />
+        <Checkbox v-model="isStraight" :label="'Прямое соединение'" />
         <Checkbox
-          v-model="filterConditions"
+          v-model="isOneAdditionalNode"
           :label="'Один дополнительный узел'"
         />
         <Checkbox
-          v-model="filterConditions"
+          v-model="isTwoAdditionalNode"
           :label="'Два дополнительных узла'"
         />
       </div>
-      {{ filterConditions }}
     </section>
     <section class="section section--big">
-      <div v-if="filteredCallingPaths.length === 0">Ничего не найдено</div>
+      <div v-if="pagedCallingPaths.length === 0">Ничего не найдено</div>
       <div v-else class="paths">
         <CallingPath
-          v-for="path in filteredCallingPaths"
-          :id="path.id"
-          :key="path.id"
-          :price="path.price"
-          :des="path.des"
-          :src="path.src"
-          :company="path.company"
+          v-for="(path, i) in pagedCallingPaths"
+          :key="i"
+          :data="Array.isArray(path) ? path : [path]"
         />
       </div>
+      <q-pagination
+        v-model="currentPage"
+        :max="maxPage"
+        direction-links
+        flat
+        color="grey"
+        active-color="orange"
+        @input="changePage"
+      />
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { onMounted, ref, watch, computed } from 'vue';
 import axios from 'axios';
-import BaseSelector from '../shared/ui/dropdown';
+import Dropdown from '../shared/ui/dropdown';
 import Checkbox from '../shared/ui/checkbox';
 import CallingPath from 'src/features/callingPath';
 import { Path } from 'src/features/callingPath/types';
+type PathOrArrayOfPaths = Path | Path[];
 
-const options = ref<object[]>([]);
-const companies = ref();
-const srcCountry = ref({ title: 'Россия (ru)', value: 'ru' });
-const destCountry = ref({ title: 'Германия (de)', value: 'de' });
-const filterConditions = ref([]);
+const dataFromServer = ref();
+const countryList = ref<object[]>([]);
+const caller = ref({ title: 'Россия (ru)', value: 'ru' });
+const callee = ref({ title: 'Германия (de)', value: 'de' });
 
-const filteredCallingPaths = computed(() => {
-  const filtredList: Path[] = [];
+const callingPaths = ref<Path[]>([]);
+const filteredCallingPaths = ref<PathOrArrayOfPaths[]>([]);
 
-  for (let company in companies.value) {
-    const availablePaths = companies.value[company]; // arr of paths [{}, {}]
-    availablePaths.map((path: Path) => (path.company = company));
+const isAllVariants = ref<boolean>(false);
+const isStraight = ref<boolean>(false);
+const isOneAdditionalNode = ref<boolean>(false);
+const isTwoAdditionalNode = ref<boolean>(false);
 
-    filtredList.push(
-      ...availablePaths.filter(
-        (pathObj: Path) =>
-          pathObj.src === srcCountry.value.value &&
-          pathObj.des === destCountry.value.value
-      )
-    );
+const currentPage = ref<number>(1);
+const pageSize = 4;
+
+watch(isAllVariants, () => {
+  if (isAllVariants.value) {
+    isStraight.value = true;
+    isOneAdditionalNode.value = true;
+    isTwoAdditionalNode.value = true;
   }
-  return filtredList.sort((a, b) => a.price - b.price);
 });
 
-onMounted(async () => {
-  let count = 0;
-  const data = await axios.get('src/shared/api/call-paths.json');
+watch([isStraight, isOneAdditionalNode, isTwoAdditionalNode], () => {
+  if (
+    isStraight.value &&
+    isOneAdditionalNode.value &&
+    isTwoAdditionalNode.value
+  ) {
+    isAllVariants.value = true;
+  } else {
+    isAllVariants.value = false;
+  }
+});
+watch(
+  [
+    isAllVariants,
+    isStraight,
+    isOneAdditionalNode,
+    isTwoAdditionalNode,
+    caller,
+    callee,
+  ],
+  () => {
+    const filtredList: PathOrArrayOfPaths[] = [];
 
-  const arr: object[] = Object.keys(data.data.data.country).map((key) => {
+    if (isStraight.value) {
+      filtredList.push(
+        ...callingPaths.value.filter(
+          (path: Path) =>
+            path.src === caller.value.value && path.des === callee.value.value
+        )
+      );
+    }
+    if (isOneAdditionalNode.value) {
+      const startRoutes = callingPaths.value.filter(
+        (path) => path.src === caller.value.value
+      ); // все объекты, где совпала страна src
+      const restRoutes = callingPaths.value.filter(
+        (path) =>
+          path.src !== caller.value.value && path.des === callee.value.value
+      ); // оставшиеся объекты (у кот. des совпадает с выбранным конечным пунктом)
+
+      startRoutes.forEach((startRoute) => {
+        restRoutes.forEach((restRoute) => {
+          if (startRoute.des === restRoute.src) {
+            // формируем связку с 1 доп роутом
+            filtredList.push([startRoute, restRoute]);
+          }
+        });
+      });
+    }
+
+    // sort by price
+    filteredCallingPaths.value = filtredList.sort((a, b) => {
+      let firstEl, secondEl;
+      if (Array.isArray(a)) {
+        firstEl = a.reduce((sum, path) => sum + path.price, 0);
+      } else {
+        firstEl = a.price;
+      }
+
+      if (Array.isArray(b)) {
+        secondEl = b.reduce((sum, path) => sum + path.price, 0);
+      } else {
+        secondEl = b.price;
+      }
+      return firstEl - secondEl;
+    });
+  }
+);
+
+// pagination ---
+const maxPage = computed(() =>
+  Math.ceil(filteredCallingPaths.value.length / pageSize)
+);
+
+const pagedCallingPaths = computed(() => {
+  return filteredCallingPaths.value.slice(
+    (currentPage.value - 1) * pageSize,
+    currentPage.value * pageSize
+  );
+});
+
+const changePage = (page: number) => {
+  currentPage.value = page;
+};
+// pagination ---
+
+onMounted(async () => {
+  const response = await axios.get('src/shared/api/call-paths.json');
+  const data = response.data.data;
+
+  countryList.value = Object.keys(data.country).map((key) => {
+    let count = 1;
     return {
       id: count++,
-      title: `${data.data.data.country[key]} (${key})`,
+      title: `${data.country[key]} (${key})`,
       value: key === 'us' ? 'usa' : key,
     };
   });
 
-  options.value = arr;
-  companies.value = data.data.data.company;
+  for (const [company, paths] of Object.entries(data.company)) {
+    const pathsArr: Path[] = paths as Path[];
+    pathsArr.forEach((path: Path, index: number) => {
+      path.id = index + 1;
+      path.company = company;
+    });
+    callingPaths.value = [...callingPaths.value, ...pathsArr];
+  }
+
+  dataFromServer.value = data;
 });
 </script>
 

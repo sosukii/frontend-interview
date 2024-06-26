@@ -12,7 +12,7 @@
 <script setup lang="ts">
 interface CheckboxProps {
   label: string;
-  modelValue: string[];
+  modelValue: boolean;
 }
 
 defineProps<CheckboxProps>();
