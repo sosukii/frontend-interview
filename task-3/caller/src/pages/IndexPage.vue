@@ -1,62 +1,69 @@
 <template>
   <div class="wrap">
-    <section class="section">
-      <Dropdown
-        v-model="caller"
-        :label="'Звонящая сторона (Caller)'"
-        :options="countryList"
-      />
-      <Dropdown
-        v-model="callee"
-        :label="'Принимающая сторона (Callee)'"
-        :options="countryList"
-      />
+    <h1 class="title">Рассчитать дешевый маршрут</h1>
+    <div class="body">
+      <q-card class="section section--props">
+        <Dropdown
+          v-model="caller"
+          :label="'Звонящая сторона (Caller)'"
+          :options="countryList"
+        />
+        <Dropdown
+          v-model="callee"
+          :label="'Принимающая сторона (Callee)'"
+          :options="countryList"
+        />
 
-      <div class="conditions">
-        <Checkbox v-model="isAllVariants" :label="'Все'" />
-        <Checkbox v-model="isStraight" :label="'Прямое соединение'" />
-        <Checkbox
-          v-model="isOneAdditionalNode"
-          :label="'Один дополнительный узел'"
+        <div class="conditions">
+          <Checkbox v-model="isAllVariants" :label="'Все'" />
+          <Checkbox v-model="isStraight" :label="'Прямое соединение'" />
+          <Checkbox
+            v-model="isOneAdditionalNode"
+            :label="'Один дополнительный узел'"
+          />
+          <Checkbox
+            v-model="isTwoAdditionalNode"
+            :label="'Два дополнительных узла'"
+          />
+        </div>
+      </q-card>
+      <section class="section section--desc">
+        <div v-if="pagedCallingPaths.length === 0">Ничего не найдено</div>
+        <div v-else class="paths">
+          <CallingPath
+            v-for="path in pagedCallingPaths"
+            :key="Array.isArray(path) ? path[0].id + path[1].id : path.id"
+            :data="Array.isArray(path) ? path : [path]"
+          />
+        </div>
+        <q-pagination
+          v-show="pagedCallingPaths.length !== 0"
+          v-model="currentPage"
+          :max="maxPage"
+          direction-links
+          flat
+          color="grey"
+          active-color="orange"
+          @input="changePage"
         />
-        <Checkbox
-          v-model="isTwoAdditionalNode"
-          :label="'Два дополнительных узла'"
-        />
-      </div>
-    </section>
-    <section class="section section--big">
-      <div v-if="pagedCallingPaths.length === 0">Ничего не найдено</div>
-      <div v-else class="paths">
-        <CallingPath
-          v-for="(path, i) in pagedCallingPaths"
-          :key="i"
-          :data="Array.isArray(path) ? path : [path]"
-        />
-      </div>
-      <q-pagination
-        v-model="currentPage"
-        :max="maxPage"
-        direction-links
-        flat
-        color="grey"
-        active-color="orange"
-        @input="changePage"
-      />
-    </section>
+      </section>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref, watch, computed } from 'vue';
-import axios from 'axios';
 import Dropdown from '../shared/ui/dropdown';
 import Checkbox from '../shared/ui/checkbox';
 import CallingPath from 'src/features/callingPath';
-import { Path } from 'src/features/callingPath/types';
+import { Path } from 'src/features/callingPath/model/types';
+import { fetchCallPaths } from 'src/features/callingPath/api/index';
+import {
+  modifyCountry,
+  modifyCompany,
+} from 'src/features/callingPath/helpers/index';
 type PathOrArrayOfPaths = Path | Path[];
 
-const dataFromServer = ref();
 const countryList = ref<object[]>([]);
 const caller = ref({ title: 'Россия (ru)', value: 'ru' });
 const callee = ref({ title: 'Германия (de)', value: 'de' });
@@ -167,28 +174,11 @@ const changePage = (page: number) => {
 // pagination ---
 
 onMounted(async () => {
-  const response = await axios.get('src/shared/api/call-paths.json');
-  const data = response.data.data;
-
-  countryList.value = Object.keys(data.country).map((key) => {
-    let count = 1;
-    return {
-      id: count++,
-      title: `${data.country[key]} (${key})`,
-      value: key === 'us' ? 'usa' : key,
-    };
-  });
-
-  for (const [company, paths] of Object.entries(data.company)) {
-    const pathsArr: Path[] = paths as Path[];
-    pathsArr.forEach((path: Path, index: number) => {
-      path.id = index + 1;
-      path.company = company;
-    });
-    callingPaths.value = [...callingPaths.value, ...pathsArr];
+  const data = await fetchCallPaths();
+  if ('country' in data) {
+    countryList.value = modifyCountry(data.country);
+    callingPaths.value = modifyCompany(data.company);
   }
-
-  dataFromServer.value = data;
 });
 </script>
 
@@ -198,13 +188,27 @@ onMounted(async () => {
   max-width: 90%;
   justify-content: space-between;
   flex-wrap: wrap;
-  flex-direction: row;
+  flex-direction: column;
   gap: 25px;
   margin: auto;
-  padding: 50px;
+  padding: 10px;
+  .title {
+    font-size: 32px;
+    font-weight: 600;
+    margin: auto;
+  }
+  .body {
+    display: flex;
+    gap: 20px;
+  }
   .section {
     flex-grow: 1;
-    &--big {
+    &--props {
+      padding: 20px;
+      height: fit-content;
+      color: grey;
+    }
+    &--desc {
       flex-grow: 2;
     }
   }
@@ -212,6 +216,7 @@ onMounted(async () => {
     display: flex;
     flex-direction: column;
     gap: 25px;
+    padding-bottom: 25px;
   }
 }
 </style>

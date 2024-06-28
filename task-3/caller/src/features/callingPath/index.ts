@@ -1,2 +1,2 @@
-import callingPath from './callingPath.vue';
+import callingPath from './ui/callingPath.vue';
 export default callingPath;

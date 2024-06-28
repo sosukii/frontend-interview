@@ -21,7 +21,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import { Path } from './types';
+import { Path } from '../model/types';
 
 const props = defineProps<{
   data: Path[];
@@ -79,7 +79,7 @@ onMounted(() => {
     .codes {
       display: flex;
       align-items: center;
-      gap: 35px;
+      gap: 50px;
       &__code {
         display: flex;
         justify-content: center;
@@ -95,7 +95,7 @@ onMounted(() => {
           display: block;
           font-size: 28px;
           position: absolute;
-          right: -70%;
+          right: -80%;
           width: 60%;
           height: 50px;
           color: grey;
